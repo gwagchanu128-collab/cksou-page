@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>순간이 억겁이 되는 일이었다</title>
     <style>
-        /* 기본 여백 제거 및 모바일 전체 화면 설정 */
         * {
             margin: 0;
             padding: 0;
@@ -15,13 +14,12 @@
             width: 100%;
             height: 100%;
             overflow: hidden;
-            background-color: #ffffff; /* 포스터 배경색에 맞춰 수정 가능 */
-            font-family: 'Pretendard', sans-serif;
+            background-color: #ffffff;
+            font-family: sans-serif;
+            -webkit-tap-highlight-color: transparent;
         }
         
-        /* 영상 컨테이너 */
         .video-container {
-            position: relative;
             width: 100%;
             height: 100%;
             display: flex;
@@ -30,54 +28,14 @@
         }
         
         video {
-            width: 100%;
-            height: 100%;
-            object-fit: cover; /* 화면 비율에 맞게 꽉 채움. 원본 비율 유지를 원하면 contain 으로 변경 */
-            pointer-events: none; /* 터치로 영상이 일시정지되는 것 방지 */
-        }
-        
-        /* 자이로센서 권한 요청 및 시작 화면 (필수) */
-        .permission-overlay {
-            position: absolute;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(255, 255, 255, 0.95);
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            z-index: 10;
-            transition: opacity 0.5s ease;
-        }
-        
-        .permission-text {
-            margin-bottom: 24px;
-            text-align: center;
-            color: #111;
-            font-size: 16px;
-            line-height: 1.5;
-        }
-        
-        .start-btn {
-            padding: 16px 36px;
-            font-size: 18px;
-            font-weight: 800;
-            background-color: #e60012; /* 포스터 메인 레드 컬러 */
-            color: white;
-            border: none;
-            border-radius: 50px;
-            cursor: pointer;
-            box-shadow: 0 4px 10px rgba(230, 0, 18, 0.3);
+            width: 100vw;
+            height: 100vh;
+            object-fit: contain; /* 화면 크기에 맞춰 포스터가 잘리지 않게 설정 */
+            pointer-events: none;
         }
     </style>
 </head>
 <body>
-
-    <div class="permission-overlay" id="overlay">
-        <p class="permission-text">
-            스마트폰을 움직여<br>홀로그램 포스터를 감상해 보세요.
-        </p>
-        <button class="start-btn" id="startBtn">인터랙션 시작</button>
-    </div>
 
     <div class="video-container">
         <video id="hologramVideo" src="motion-poster(M).mp4" preload="auto" muted playsinline></video>
@@ -85,72 +43,80 @@
 
     <script>
         const video = document.getElementById('hologramVideo');
-        const overlay = document.getElementById('overlay');
-        const startBtn = document.getElementById('startBtn');
+        const MAX_ANGLE = 30; // 자이로 감도
+        let isInitialized = false;
 
-        // 반응 각도 설정 (좌우 30도 범위 내에서 영상 처음~끝 재생)
-        const MAX_ANGLE = 30; 
+        // [핵심] 화면 터치 시 가장 먼저 실행되는 함수
+        function activateInteraction() {
+            if (isInitialized) return;
 
-        function initSensor() {
-            // iOS 13 이상 기기 권한 요청 처리
+            // 1. iOS 13+ 기기: 즉각적인 센서 권한 요청 (Promise나 setTimeout 안에 넣으면 절대 안 됨)
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
                 DeviceOrientationEvent.requestPermission()
                     .then(permissionState => {
                         if (permissionState === 'granted') {
+                            isInitialized = true;
                             window.addEventListener('deviceorientation', handleOrientation);
-                            hideOverlay();
+                            unlockVideo(); // 권한 획득 후 비디오 잠금 해제
                         } else {
-                            alert('센서 권한이 거부되었습니다. 일반 재생 화면으로 넘어갑니다.');
-                            hideOverlay();
-                            video.loop = true;
-                            video.play();
+                            // 권한 거부 시 일반 재생
+                            startFallbackLoop();
                         }
                     })
                     .catch(console.error);
             } else {
-                // 안드로이드 및 일반 환경
+                // 2. 안드로이드 및 기타 환경 (권한 요청 불필요)
+                isInitialized = true;
                 window.addEventListener('deviceorientation', handleOrientation);
-                hideOverlay();
+                unlockVideo();
             }
+
+            // 터치 이벤트는 1회만 작동하도록 제거
+            window.removeEventListener('click', activateInteraction);
+            window.removeEventListener('touchstart', activateInteraction);
         }
 
-        // 시작 화면 숨기기
-        function hideOverlay() {
-            overlay.style.opacity = '0';
-            setTimeout(() => {
-                overlay.style.display = 'none';
-            }, 500);
+        // 비디오를 모바일에서 제어할 수 있도록 한 번 깨우는(Unlock) 함수
+        function unlockVideo() {
+            video.play().then(() => {
+                video.pause();
+            }).catch(console.error);
         }
 
-        // 센서 데이터를 바탕으로 영상 스크러빙(Scrubbing) 처리
+        // 센서 사용 불가 환경을 위한 기본 루프 재생
+        function startFallbackLoop() {
+            video.loop = true;
+            video.play();
+        }
+
+        // 기기 기울기에 따라 영상 시간(Frame) 제어
         function handleOrientation(event) {
-            let tiltX = event.gamma; // 좌우 기울기
+            let tiltX = event.gamma; // 좌우 기울기 (-90 ~ 90)
 
             if (tiltX === null) return;
 
-            // 각도 제한
+            // 기울기 범위 제한 (-30 ~ 30)
             if (tiltX > MAX_ANGLE) tiltX = MAX_ANGLE;
             if (tiltX < -MAX_ANGLE) tiltX = -MAX_ANGLE;
 
-            // 기울기 값을 0 ~ 1 사이의 비율로 변환
+            // -30~30을 0~1(0%~100%) 비율로 변환
             const percentage = (tiltX + MAX_ANGLE) / (MAX_ANGLE * 2);
 
-            // 영상 위치 업데이트
             if (video.duration) {
                 video.currentTime = percentage * video.duration;
             }
         }
 
-        // 버튼 클릭 이벤트
-        startBtn.addEventListener('click', () => {
-            // 모바일 브라우저 정책상 사용자 인터랙션 발생 시 비디오를 한 번 활성화해야 함
-            video.play().then(() => {
-                video.pause();
-                initSensor();
-            }).catch((e) => {
-                console.log("Video play failed: ", e);
-                initSensor();
-            });
+        // 사용자가 화면 아무 곳이나 터치하면 권한 요청 및 인터랙션 시작
+        window.addEventListener('click', activateInteraction);
+        window.addEventListener('touchstart', activateInteraction);
+
+        // 안드로이드 등은 터치 없이도 센서가 켜져있는지 확인 후 바로 시작 시도
+        window.addEventListener('DOMContentLoaded', () => {
+            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission !== 'function') {
+                window.addEventListener('deviceorientation', handleOrientation);
+                // 단, 비디오 스크러빙(currentTime)을 위해서는 여전히 첫 터치가 필요할 수 있습니다.
+            }
         });
     </script>
 </body>
