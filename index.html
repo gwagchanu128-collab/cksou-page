@@ -18,7 +18,6 @@
             font-family: sans-serif;
             -webkit-tap-highlight-color: transparent;
         }
-        
         .video-container {
             width: 100%;
             height: 100%;
@@ -26,15 +25,12 @@
             justify-content: center;
             align-items: center;
         }
-        
         video {
             width: 100vw;
             height: 100vh;
             object-fit: contain;
             pointer-events: none;
         }
-
-        /* 첫 화면에서 유저에게 힌트를 주는 텍스트 */
         .hint-text {
             position: absolute;
             bottom: 10%;
@@ -64,18 +60,15 @@
     <script>
         const video = document.getElementById('hologramVideo');
         const hint = document.getElementById('hint');
-        const MAX_ANGLE = 30; // 자이로 감도 (좌우 30도)
+        const MAX_ANGLE = 30;
         let isInitialized = false;
 
-        // --- [1] 모바일: 화면 터치 시 자이로센서 켜기 ---
         function activateMobileInteraction() {
             if (isInitialized) return;
             
-            // 안내 문구 숨기기
             hint.style.opacity = '0';
 
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-                // iOS 13+ 권한 요청
                 DeviceOrientationEvent.requestPermission()
                     .then(permissionState => {
                         if (permissionState === 'granted') {
@@ -86,7 +79,6 @@
                     })
                     .catch(console.error);
             } else {
-                // 안드로이드
                 isInitialized = true;
                 window.addEventListener('deviceorientation', handleOrientation);
                 unlockVideo();
@@ -102,7 +94,6 @@
             }).catch(console.error);
         }
 
-        // 모바일 기울기 계산
         function handleOrientation(event) {
             let tiltX = event.gamma; 
 
@@ -118,9 +109,7 @@
             }
         }
 
-        // --- [2] 데스크톱: 마우스 움직임으로 제어하기 ---
         function handleMouseMove(event) {
-            // 마우스가 화면 왼쪽 끝에 있으면 0, 오른쪽 끝에 있으면 1
             const percentage = event.clientX / window.innerWidth;
             
             if (video.duration) {
@@ -128,19 +117,15 @@
             }
         }
 
-        // 데스크톱인지 모바일인지 대략적으로 파악하여 이벤트 분리
         const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
         if (isMobile) {
-            // 모바일 환경: 터치 이벤트 대기
             window.addEventListener('click', activateMobileInteraction);
             window.addEventListener('touchstart', activateMobileInteraction);
         } else {
-            // 데스크톱 환경: 안내 문구 내용을 바꾸고 마우스 이벤트 즉시 활성화
             hint.innerHTML = "마우스를 좌우로 움직여보세요!";
             window.addEventListener('mousemove', handleMouseMove);
             
-            // 데스크톱에서도 브라우저 정책상 영상을 한 번 제어 가능하게 풀어줌
             window.addEventListener('click', () => {
                 hint.style.opacity = '0';
                 unlockVideo();
